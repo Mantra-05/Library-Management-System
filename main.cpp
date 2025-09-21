@@ -1,11 +1,10 @@
 #include <iostream>
-#include <fstream>
 #include <iomanip>
 #include <string>
 #include <cstring>
-#include <conio.h>
+#include <sqlite3.h>
 #include <stdlib.h>
-
+#include <conio.h>
 using namespace std;
 
 class LibraryEntity
@@ -17,12 +16,7 @@ public:
     virtual void create() = 0;
     virtual void show() = 0;
     virtual void report() const = 0;
-
-    const char *getID() const
-    {
-        return id;
-    }
-
+    const char *getID() const { return id; }
     virtual ~LibraryEntity() {}
 };
 
@@ -45,27 +39,23 @@ public:
         cin.getline(aname, 20);
         cout << "\n\nBook Created..";
     }
-
     void show() override
     {
         cout << "\nBook Number: " << id;
         cout << "\nBook Name: " << bname;
         cout << "\nAuthor Name: " << aname;
     }
-
     void report() const override
     {
         cout << id << setw(30) << bname << setw(30) << aname << endl;
     }
-
-    void modify()
+    const char *getBname() const { return bname; }
+    const char *getAname() const { return aname; }
+    void setData(const char *bid, const char *name, const char *auth)
     {
-        cout << "\nBook Number: " << id;
-        cout << "\nModify Book Name: ";
-        cin.ignore();
-        cin.getline(bname, 50);
-        cout << "Modify Author's Name: ";
-        cin.getline(aname, 20);
+        strcpy(id, bid);
+        strcpy(bname, name);
+        strcpy(aname, auth);
     }
 };
 
@@ -89,343 +79,292 @@ public:
         stbno[0] = '\0';
         cout << "\n\nStudent Record Created...";
     }
-
     void show() override
     {
         cout << "\nAdmission Number: " << id;
         cout << "\nStudent Name: " << name;
         cout << "\nNo of Book Issued: " << token;
         if (token == 1)
-        {
             cout << "\nBook Number: " << stbno;
-        }
     }
-
     void report() const override
     {
         cout << "\t" << id << setw(20) << name << setw(10) << token << endl;
     }
-
-    void modify()
-    {
-        cout << "\nAdmission No.: " << id;
-        cout << "\nModify Student Name: ";
-        cin.ignore();
-        cin.getline(name, 20);
-    }
-
+    const char *getName() const { return name; }
     const char *getStbno() const { return stbno; }
     int getToken() const { return token; }
     void addToken() { token = 1; }
     void resetToken() { token = 0; }
     void setStbno(const char *t) { strcpy(stbno, t); }
+    void setData(const char *sid, const char *n, int t, const char *bookid)
+    {
+        strcpy(id, sid);
+        strcpy(name, n);
+        token = t;
+        strcpy(stbno, bookid);
+    }
 };
 
 class FileManager
 {
-public:
-    template <typename T>
-    void addRecord(const string &filename)
+private:
+    sqlite3 *db;
+    static int displayCallback(void *data, int argc, char **argv, char **azColName)
     {
-        ofstream outFile(filename, ios::binary | ios::app);
-        if (!outFile)
+        for (int i = 0; i < argc; i++)
         {
-            cerr << "Cannot open file for writing!" << endl;
-            return;
+            cout << argv[i] << "\t";
         }
-        T record;
-        record.create();
-        outFile.write(reinterpret_cast<const char *>(&record), sizeof(T));
-        outFile.close();
+        cout << endl;
+        return 0;
     }
 
-    template <typename T>
-    void displayAllRecords(const string &filename, const string &header1, const string &header2, const string &header3)
+public:
+    FileManager()
     {
-        ifstream inFile(filename, ios::binary);
-        if (!inFile)
+        if (sqlite3_open("library.db", &db))
         {
-            cout << "File could not be opened." << endl;
+            cerr << "Can't open database\n";
+            exit(1);
+        }
+        const char *bookTable = "CREATE TABLE IF NOT EXISTS Books(book_id TEXT PRIMARY KEY,name TEXT,author TEXT);";
+        const char *studentTable = "CREATE TABLE IF NOT EXISTS Students(student_id TEXT PRIMARY KEY,name TEXT,token INT,issued_book_id TEXT,FOREIGN KEY(issued_book_id) REFERENCES Books(book_id));";
+        char *err = 0;
+        sqlite3_exec(db, bookTable, 0, 0, &err);
+        sqlite3_exec(db, studentTable, 0, 0, &err);
+    }
+    ~FileManager() { sqlite3_close(db); }
+    void addBook()
+    {
+        Book b;
+        b.create();
+        string sql = "INSERT INTO Books VALUES('" + string(b.getID()) + "','" + string(b.getBname()) + "','" + string(b.getAname()) + "');";
+        char *err = 0;
+        sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+    }
+    void addStudent()
+    {
+        Student s;
+        s.create();
+        string sql = "INSERT INTO Students VALUES('" + string(s.getID()) + "','" + string(s.getName()) + "',0,'');";
+        char *err = 0;
+        sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+    }
+    void displayBooks()
+    {
+        cout << "\n\nBook List\n";
+        char *err = 0;
+        sqlite3_exec(db, "SELECT * FROM Books;", displayCallback, 0, &err);
+        getch();
+    }
+    void displayStudents()
+    {
+        cout << "\n\nStudent List\n";
+        char *err = 0;
+        sqlite3_exec(db, "SELECT * FROM Students;", displayCallback, 0, &err);
+        getch();
+    }
+    void modifyBook()
+    {
+        string id;
+        cout << "\n\nEnter Book ID to Modify: ";
+        cin >> id;
+        cin.ignore();
+        string name, auth;
+        cout << "New Book Name: ";
+        getline(cin, name);
+        cout << "New Author: ";
+        getline(cin, auth);
+        string sql = "UPDATE Books SET name='" + name + "', author='" + auth + "' WHERE book_id='" + id + "';";
+        char *err = 0;
+        sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+    }
+    void modifyStudent()
+    {
+        string id;
+        cout << "\n\nEnter Student ID to Modify: ";
+        cin >> id;
+        cin.ignore();
+        string name;
+        cout << "New Student Name: ";
+        getline(cin, name);
+        string sql = "UPDATE Students SET name='" + name + "' WHERE student_id='" + id + "';";
+        char *err = 0;
+        sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+    }
+    void deleteBook()
+    {
+        string id;
+        cout << "\n\nEnter Book ID to Delete: ";
+        cin >> id;
+        string sql = "DELETE FROM Books WHERE book_id='" + id + "';";
+        char *err = 0;
+        sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+    }
+    void deleteStudent()
+    {
+        string id;
+        cout << "\n\nEnter Student ID to Delete: ";
+        cin >> id;
+        string sql = "DELETE FROM Students WHERE student_id='" + id + "';";
+        char *err = 0;
+        sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+    }
+    void issueBook()
+    {
+        string sid, bid;
+        cout << "\nEnter Student ID: ";
+        cin >> sid;
+        cout << "Enter Book ID: ";
+        cin >> bid;
+
+        char *err = 0;
+        int rc;
+
+        rc = sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, &err);
+        if (rc != SQLITE_OK)
+        {
+            cout << "Transaction Error\n";
+            return;
+        }
+
+        string sqlCheckStudent = "SELECT token FROM Students WHERE student_id='" + sid + "';";
+        sqlite3_stmt *stmt;
+        sqlite3_prepare_v2(db, sqlCheckStudent.c_str(), -1, &stmt, 0);
+        int token = -1;
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            token = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+
+        string sqlCheckBook = "SELECT book_id FROM Books WHERE book_id='" + bid + "';";
+        sqlite3_prepare_v2(db, sqlCheckBook.c_str(), -1, &stmt, 0);
+        bool bookExists = false;
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            bookExists = true;
+        sqlite3_finalize(stmt);
+
+        if (token == -1 || !bookExists)
+        {
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, &err);
+            cout << "Student or Book not found. Transaction aborted.\n";
             getch();
             return;
         }
-        cout << "\n\n\t\t" << (filename == "book.dat" ? "Book" : "Student") << " List\n\n";
-        cout << "==================================================================\n";
-        cout << "\t" << header1 << setw(20) << header2 << setw(25) << header3 << "\n";
-        cout << "==================================================================\n";
-        T record;
-        while (inFile.read(reinterpret_cast<char *>(&record), sizeof(T)))
+        if (token == 1)
         {
-            record.report();
-        }
-        inFile.close();
-        getch();
-    }
-
-    template <typename T>
-    bool findRecord(const string &filename, const char *id, T &record)
-    {
-        ifstream inFile(filename, ios::binary);
-        if (!inFile)
-            return false;
-        bool found = false;
-        while (inFile.read(reinterpret_cast<char *>(&record), sizeof(T)))
-        {
-            if (stricmp(record.getID(), id) == 0)
-            {
-                found = true;
-                break;
-            }
-        }
-        inFile.close();
-        return found;
-    }
-
-    template <typename T>
-    void modifyRecord(const string &filename)
-    {
-        char id[6];
-        cout << "\n\nEnter the ID to Modify: ";
-        cin >> id;
-
-        fstream file(filename, ios::binary | ios::in | ios::out);
-        if (!file)
-        {
-            cerr << "File could not be opened." << endl;
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, &err);
+            cout << "Student has not returned previous book.\n";
+            getch();
             return;
         }
 
-        bool found = false;
-        T record;
-        while (file.read(reinterpret_cast<char *>(&record), sizeof(T)))
+        string sql = "UPDATE Students SET token=1, issued_book_id='" + bid + "' WHERE student_id='" + sid + "';";
+        rc = sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+        if (rc != SQLITE_OK)
         {
-            if (stricmp(record.getID(), id) == 0)
-            {
-                record.show();
-                cout << "\nEnter the new details:\n";
-                record.modify();
-
-                long pos = -1 * static_cast<long>(sizeof(T));
-                file.seekp(pos, ios::cur);
-                file.write(reinterpret_cast<const char *>(&record), sizeof(T));
-
-                cout << "\n\nRecord Updated.";
-                found = true;
-                break;
-            }
-        }
-        file.close();
-        if (!found)
-            cout << "\n\nRecord Not Found.";
-        getch();
-    }
-
-    template <typename T>
-    void deleteRecord(const string &filename)
-    {
-        char id[6];
-        cout << "\n\nEnter the ID to Delete: ";
-        cin >> id;
-
-        ifstream inFile(filename, ios::binary);
-        if (!inFile)
-        {
-            cerr << "File error." << endl;
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, &err);
+            cout << "Error issuing book. Transaction aborted.\n";
+            getch();
             return;
         }
 
-        ofstream outFile("temp.dat", ios::binary);
-
-        T record;
-        bool found = false;
-        while (inFile.read(reinterpret_cast<char *>(&record), sizeof(T)))
-        {
-            if (stricmp(record.getID(), id) == 0)
-            {
-                found = true;
-            }
-            else
-            {
-                outFile.write(reinterpret_cast<const char *>(&record), sizeof(T));
-            }
-        }
-
-        inFile.close();
-        outFile.close();
-
-        remove(filename.c_str());
-        rename("temp.dat", filename.c_str());
-
-        if (found)
-            cout << "\n\n\tRecord Deleted...";
-        else
-            cout << "\n\nRecord not Found";
+        sqlite3_exec(db, "COMMIT;", 0, 0, &err);
+        cout << "Book issued successfully.\n";
         getch();
     }
 
-    void issueBook();
-    void depositBook();
+    void depositBook()
+    {
+        string sid;
+        cout << "\nEnter Student ID: ";
+        cin >> sid;
+
+        char *err = 0;
+        sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, &err);
+
+        string sqlCheck = "SELECT token,issued_book_id FROM Students WHERE student_id='" + sid + "';";
+        sqlite3_stmt *stmt;
+        sqlite3_prepare_v2(db, sqlCheck.c_str(), -1, &stmt, 0);
+        int token = -1;
+        string bid = "";
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            token = sqlite3_column_int(stmt, 0);
+            bid = (const char *)sqlite3_column_text(stmt, 1);
+        }
+        sqlite3_finalize(stmt);
+
+        if (token == -1)
+        {
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, &err);
+            cout << "Student not found.\n";
+            getch();
+            return;
+        }
+        if (token == 0)
+        {
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, &err);
+            cout << "No book issued.\n";
+            getch();
+            return;
+        }
+
+        int days;
+        cout << "Returned in how many days?: ";
+        cin >> days;
+        if (days > 15)
+            cout << "Fine: Rs " << (days - 15) * 1 << "\n";
+
+        string sql = "UPDATE Students SET token=0, issued_book_id='' WHERE student_id='" + sid + "';";
+        int rc = sqlite3_exec(db, sql.c_str(), 0, 0, &err);
+        if (rc != SQLITE_OK)
+        {
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, &err);
+            cout << "Error depositing book. Transaction aborted.\n";
+            getch();
+            return;
+        }
+
+        sqlite3_exec(db, "COMMIT;", 0, 0, &err);
+        cout << "Book deposited successfully.\n";
+        getch();
+    }
 };
-
-void FileManager::issueBook()
-{
-    char student_id[6], book_id[6];
-    cout << "\n\nBOOK ISSUE...\n";
-    cout << "\tEnter Admission no.: ";
-    cin >> student_id;
-
-    Student student;
-    if (!findRecord("student.dat", student_id, student))
-    {
-        cout << "Student Record Not Found...";
-        getch();
-        return;
-    }
-
-    if (student.getToken() == 1)
-    {
-        cout << "You Have Not Returned The Last Book.";
-        getch();
-        return;
-    }
-
-    cout << "\n\tEnter The Book No.: ";
-    cin >> book_id;
-
-    Book book;
-    if (!findRecord("book.dat", book_id, book))
-    {
-        cout << "Book Does Not Exist.";
-        getch();
-        return;
-    }
-
-    student.addToken();
-    student.setStbno(book.getID());
-
-    fstream studentFile("student.dat", ios::binary | ios::in | ios::out);
-    Student tempStudent;
-    while (studentFile.read(reinterpret_cast<char *>(&tempStudent), sizeof(Student)))
-    {
-        if (stricmp(tempStudent.getID(), student_id) == 0)
-        {
-            long pos = -1 * static_cast<long>(sizeof(Student));
-            studentFile.seekp(pos, ios::cur);
-            studentFile.write(reinterpret_cast<const char *>(&student), sizeof(Student));
-            cout << "\n\n\tBook Issued Successfully\n";
-            cout << "Please return within 15 days to avoid a fine.\n";
-            break;
-        }
-    }
-    studentFile.close();
-    getch();
-}
-
-void FileManager::depositBook()
-{
-    char student_id[6];
-    cout << "\n\nBOOK DEPOSIT...\n";
-    cout << "\tEnter Admission no. Of Student: ";
-    cin >> student_id;
-
-    Student student;
-    if (!findRecord("student.dat", student_id, student))
-    {
-        cout << "Student Record Not Found...";
-        getch();
-        return;
-    }
-
-    if (student.getToken() == 0)
-    {
-        cout << "No Book Has Been Issued To This Student.";
-        getch();
-        return;
-    }
-
-    Book book;
-    if (!findRecord("book.dat", student.getStbno(), book))
-    {
-        cout << "Issued Book Record Not Found in Library (This shouldn't happen!).";
-        getch();
-        return;
-    }
-
-    book.show();
-    int days;
-    cout << "\n\nBook returned in how many days?: ";
-    cin >> days;
-    if (days > 15)
-    {
-        int fine = (days - 15) * 1;
-        cout << "\n\nFine is: Rs " << fine;
-    }
-
-    student.resetToken();
-    student.setStbno("");
-
-    fstream studentFile("student.dat", ios::binary | ios::in | ios::out);
-    Student tempStudent;
-    while (studentFile.read(reinterpret_cast<char *>(&tempStudent), sizeof(Student)))
-    {
-        if (stricmp(tempStudent.getID(), student_id) == 0)
-        {
-            long pos = -1 * static_cast<long>(sizeof(Student));
-            studentFile.seekp(pos, ios::cur);
-            studentFile.write(reinterpret_cast<const char *>(&student), sizeof(Student));
-            cout << "\n\n\tBook Deposited Successfully.";
-            break;
-        }
-    }
-    studentFile.close();
-    getch();
-}
 
 void adminMenu(FileManager &fm)
 {
     int ch2;
-    cout << "\n\n\n\tADMINISTRATOR MENU";
-    cout << "\n\n\t1. CREATE STUDENT RECORD";
-    cout << "\n\t2. DISPLAY ALL STUDENT RECORDS";
-    cout << "\n\t3. MODIFY STUDENT RECORD";
-    cout << "\n\t4. DELETE STUDENT RECORD";
-    cout << "\n\t5. CREATE BOOK";
-    cout << "\n\t6. DISPLAY ALL BOOKS";
-    cout << "\n\t7. MODIFY BOOK RECORD";
-    cout << "\n\t8. DELETE BOOK RECORD";
-    cout << "\n\t9. BACK TO MAIN MENU";
-    cout << "\n\n\tPlease Enter Your Choice (1-9): ";
+    cout << "\n\nADMIN MENU\n1.CREATE STUDENT\n2.DISPLAY STUDENTS\n3.MODIFY STUDENT\n4.DELETE STUDENT\n5.CREATE BOOK\n6.DISPLAY BOOKS\n7.MODIFY BOOK\n8.DELETE BOOK\n9.BACK\nChoice: ";
     cin >> ch2;
     switch (ch2)
     {
     case 1:
-        fm.addRecord<Student>("student.dat");
+        fm.addStudent();
         break;
     case 2:
-        fm.displayAllRecords<Student>("student.dat", "Admission No.", "Name", "Book Issued");
+        fm.displayStudents();
         break;
     case 3:
-        fm.modifyRecord<Student>("student.dat");
+        fm.modifyStudent();
         break;
     case 4:
-        fm.deleteRecord<Student>("student.dat");
+        fm.deleteStudent();
         break;
     case 5:
-        fm.addRecord<Book>("book.dat");
+        fm.addBook();
         break;
     case 6:
-        fm.displayAllRecords<Book>("book.dat", "Book No.", "Book Name", "Author");
+        fm.displayBooks();
         break;
     case 7:
-        fm.modifyRecord<Book>("book.dat");
+        fm.modifyBook();
         break;
     case 8:
-        fm.deleteRecord<Book>("book.dat");
+        fm.deleteBook();
         break;
     case 9:
         return;
-    default:
-        cout << "Invalid choice";
     }
     adminMenu(fm);
 }
@@ -433,16 +372,11 @@ void adminMenu(FileManager &fm)
 int main()
 {
     char ch;
-    FileManager fm; 
+    FileManager fm;
     do
     {
         system("cls");
-        cout << "\n\n\n\t MAIN MENU";
-        cout << "\n\n\t1. BOOK ISSUE";
-        cout << "\n\n\t2. BOOK DEPOSIT";
-        cout << "\n\n\t3. ADMINISTRATOR MENU";
-        cout << "\n\n\t4. EXIT";
-        cout << "\n\n\tPlease Select Your Option (1-4): ";
+        cout << "\n\nMAIN MENU\n1.BOOK ISSUE\n2.BOOK DEPOSIT\n3.ADMIN MENU\n4.EXIT\nChoice: ";
         ch = getche();
         switch (ch)
         {
@@ -457,10 +391,7 @@ int main()
             break;
         case '4':
             exit(0);
-        default:
-            cout << "\a"; 
         }
     } while (ch != '4');
-
     return 0;
 }

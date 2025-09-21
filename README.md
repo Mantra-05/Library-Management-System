@@ -33,11 +33,8 @@ A **console-based Library Management System** developed in **C++** using **OOP p
 
 ---
 
-## How to Compile & Run
-
-1. Ensure you have **MinGW** installed and `sqlite3` configured.
-2. Open Command Prompt in the project directory.
-3. Compile the project:
+## To Compile & Run
 
 ```bash
-g++ main.cpp -IC:/MinGW/include -LC:/MinGW/bin -lsqlite3 -o library.exe
+gcc -c sqlite3.c -o sqlite3.o
+g++ main.cpp sqlite3.o -o library.exe -std=c++11
